@@ -154,12 +154,13 @@ run_fzf() {
 
     # Preview script to handle files vs directories
     local preview_cmd='
-        if [ -f {} ]; then
-            bat --style=numbers --color=always {} 2>/dev/null || cat {}
-        elif [ -d {} ]; then
-            echo "\n  Directory: {}\n"
-            tree -C {} 2>/dev/null || ls -la {} 2>/dev/null
-        fi'
+        if [ -f "{}" ]; then
+            bat --style=numbers --color=always "{}" 2>/dev/null || cat "{}"
+        elif [ -d "{}" ]; then
+            printf "\n  Directory: %s\n" "{}"
+            tree -C "{}" 2>/dev/null || ls -la "{}" 2>/dev/null
+        fi
+    '
 
     # Change to root directory temporarily
     (cd "$root_dir" && {
@@ -283,9 +284,9 @@ process_targets() {
     
     for target in "$@"; do
         debug "Processing: $target"
-        if [ -f "$target" ]; then
-            FILE_COUNT=$((FILE_COUNT + 1))
-            output+="$(process_file "$target")"
+         if [ -f "$target" ]; then
+             FILE_COUNT=$((FILE_COUNT + 1))
+             output="${output}$(process_file "$target")"
         elif [ -d "$target" ]; then
             # For directories, we need to count the files inside
             if [ "$tree_only" != "true" ]; then
@@ -294,12 +295,13 @@ process_targets() {
                 file_count_in_dir=$(cd "$target" && fd . --type file --color=never $fd_opts | wc -l)
                 FILE_COUNT=$((FILE_COUNT + file_count_in_dir))
             fi
-            output+="$(process_dir "$target" "$fd_opts" "$tree_only")"
+             output="${output}$(process_dir "$target" "$fd_opts" "$tree_only")"
         else
             echo "Warning: Target not found - $target" >&2
             continue
         fi
-        output+=$'\n\n'
+         output="${output}
+"
     done
 
     output_handler "$output"
@@ -308,21 +310,22 @@ process_targets() {
 main() {
     local fd_opts=""
     local tree_only="false"
-    local targets=()
+    local targets=""
+    local has_targets=false
 
     # Parse arguments
-    while [[ $# -gt 0 ]]; do
+    while [ "$#" -gt 0 ]; do
         case $1 in
             -h|--help) show_help; exit 0 ;;
             -v|--version) echo "llmcat version $VERSION"; exit 0 ;;
             -i|--ignore) 
-                fd_opts+=" --exclude \"$2\""; 
+                fd_opts="${fd_opts} --exclude \"$2\""; 
                 shift 2 ;;
             -n|--no-ignore) 
-                fd_opts+=" --no-ignore"; 
+                fd_opts="${fd_opts} --no-ignore"; 
                 shift ;;
             -H|--hidden) 
-                fd_opts+=" --hidden"; 
+                fd_opts="${fd_opts} --hidden"; 
                 shift ;;
             -t|--tree-only) 
                 tree_only="true"; 
@@ -343,7 +346,8 @@ main() {
                 DEBUG="true"; 
                 shift ;;
             *) 
-                targets+=("$1"); 
+                targets="${targets}${targets:+ }$1"; 
+                has_targets=true;
                 shift ;;
         esac
     done
@@ -351,7 +355,7 @@ main() {
     detect_os
 
     # Interactive mode if no targets
-    if [ ${#targets[@]} -eq 0 ]; then
+    if [ "$has_targets" = "false" ]; then
         debug "Starting interactive mode"
         if check_dependencies; then
             debug "Running fzf selection"
@@ -361,7 +365,9 @@ main() {
             if [ -n "$selected" ]; then
                 debug "Processing selection"
                 while IFS= read -r line; do
-                    [ -n "$line" ] && targets+=("$line")
+                    if [ -n "$line" ]; then
+                        targets="${targets}${targets:+ }$line"
+                    fi
                 done <<< "$selected"
             else
                 debug "No selection made"
@@ -372,9 +378,9 @@ main() {
         fi
     fi
 
-    if [ ${#targets[@]} -gt 0 ]; then
-        debug "Processing ${#targets[@]} targets"
-        process_targets "$fd_opts" "${targets[@]}"
+    if [ -n "$targets" ]; then
+        debug "Processing targets: $targets"
+        process_targets "$fd_opts" $targets
     fi
 }
 
